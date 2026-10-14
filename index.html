@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AINU Account Ticket Helper</title>
+<style>
+  :root {
+    --bg: #141922; --card: #1c2330; --card-2: #202838; --line: #334155; --text: #e5e7eb; --muted: #94a3b8;
+    --brand: #4f8cff; --brand-dark: #2f6df6; --err: #ff8f7f; --err-bg: #3a1f24;
+    --warn: #f6c177; --warn-bg: #3a2c13; --ok: #72e0a5; --ok-bg: #143526;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); }
+  header { background: #0f1622; color: #fff; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; opacity: .85; font-size: 13px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: linear-gradient(180deg, var(--card), var(--card-2)); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.22); }
+  .card h2 { margin: 0 0 4px; font-size: 16px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 2px 0 8px; }
+  label.field { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input[type=text], select, textarea { width: 100%; padding: 7px 9px; border: 1px solid #42526e; border-radius: 4px; font: inherit; background: #101826; color: var(--text); }
+  input[type=text]::placeholder, textarea::placeholder { color: #7c8aa5; }
+  input[type=text]:focus, select:focus, textarea:focus { outline: 2px solid #6ba1ff; background: #162131; }
+  textarea { resize: vertical; min-height: 72px; }
+  .radios { display: flex; gap: 10px; flex-wrap: wrap; }
+  .radios label { border: 1px solid #42526e; border-radius: 4px; padding: 6px 12px; cursor: pointer; background: #101826; }
+  .radios label:has(input:checked) { border-color: var(--brand); background: rgba(79, 140, 255, .18); font-weight: 600; }
+  .prefix-row { display: flex; align-items: stretch; }
+  .prefix-row .prefix { background: #162131; border: 1px solid #42526e; border-right: 0; border-radius: 4px 0 0 4px; padding: 7px 9px; font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+  .prefix-row input { border-radius: 0 4px 4px 0; }
+  .clone-source { display: grid; gap: 8px; }
+  .clone-source .manual { display: none; }
+  .clone-source.custom .manual { display: block; }
+  .sec-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .sec-head input { width: 18px; height: 18px; }
+  .sec-head h2 { margin: 0; }
+  .sec-body { margin-top: 10px; display: none; }
+  .section.on .sec-body { display: block; }
+  .section.on { border-color: var(--brand); }
+  .acct { border: 1px dashed #42526e; border-radius: 6px; padding: 12px; margin-bottom: 12px; background: rgba(16, 24, 38, .65); }
+  .acct-top { display: flex; justify-content: space-between; align-items: center; }
+  .acct-top strong { font-size: 13px; }
+  fieldset.perms { border: 1px solid var(--line); border-radius: 6px; margin: 12px 0 0; padding: 8px 12px; background: rgba(12, 18, 28, .4); }
+  fieldset.perms legend { font-weight: 600; padding: 0 6px; }
+  .perm { display: block; margin: 6px 0; }
+  .perm span.name { font-weight: 600; }
+  .perm small { display: block; color: var(--muted); margin-left: 24px; }
+  .perm-children { margin-left: 24px; border-left: 2px solid var(--line); padding-left: 10px; }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  button { font: inherit; cursor: pointer; border-radius: 4px; border: 1px solid #42526e; background: #101826; color: var(--text); padding: 5px 10px; }
+  button:hover:not(:disabled) { background: #162131; }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--brand-dark); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.link { border: 0; background: none; color: var(--err); padding: 0; }
+  .note { background: rgba(79, 140, 255, .18); color: #cfe0ff; border-radius: 4px; padding: 6px 10px; font-size: 12.5px; margin-top: 8px; border: 1px solid rgba(79, 140, 255, .25); }
+  .out { position: sticky; top: 12px; }
+  .msgs { margin: 0 0 12px; padding: 0; list-style: none; }
+  .msgs li { border-radius: 4px; padding: 6px 10px; margin-bottom: 6px; font-size: 13px; }
+  .msgs .err { background: var(--err-bg); color: var(--err); }
+  .msgs .warn { background: var(--warn-bg); color: var(--warn); }
+  .msgs .ok { background: var(--ok-bg); color: var(--ok); }
+  .out-title { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 4px; font-weight: 600; }
+  .out textarea { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; background: #101826; color: var(--text); }
+  #outDesc { min-height: 380px; }
+  .topbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AINU Account Ticket Helper</h1>
+  <p>Fill in the form, then copy the title and description into a new Jira ticket (follows template AINU-5555).</p>
+</header>
+<div class="layout">
+  <main>
+    <div class="card">
+      <h2>Ticket basics</h2>
+      <label class="field">Environment <span class="hint">(one ticket = one environment)</span></label>
+      <div class="radios" id="envRadios">
+        <label><input type="radio" name="env" value="PROD"> Production (PROD)</label>
+        <label><input type="radio" name="env" value="UAT"> Testing (UAT)</label>
+      </div>
+      <label class="field">What do you need?</label>
+      <div class="radios" id="modeRadios">
+        <label><input type="radio" name="mode" value="create" checked> Create new accounts</label>
+        <label><input type="radio" name="mode" value="add"> Add permissions to an existing account</label>
+      </div>
+      <div class="note" id="modeNote" hidden>
+        Add-permissions tickets cover exactly one account. List only the <b>new</b> permissions; the account's current permissions are kept.
+      </div>
+      <label class="field" for="portal">PortalPartner</label>
+      <div class="hint"><strong>Case sensitive</strong> Example: ABC, Abc, abc</div>
+      <input type="text" id="portal" placeholder="e.g. ABC, Abc, abc" autocomplete="off">
+    </div>
+    <div id="sections"></div>
+  </main>
+  <aside class="out">
+    <div class="card">
+      <div class="topbar"><button id="resetBtn" type="button">Start over</button></div>
+      <h2>Your Jira ticket</h2>
+      <ul class="msgs" id="msgs"></ul>
+      <div class="out-title"><span>Title</span><button class="primary" id="copyTitle" type="button">Copy title</button></div>
+      <input type="text" id="outTitle" aria-label="Title" readonly>
+      <div class="out-title"><span>Description (Markdown)</span><button class="primary" id="copyDesc" type="button">Copy description</button></div>
+      <textarea id="outDesc" aria-label="Description" readonly></textarea>
+    </div>
+  </aside>
+</div>
+<script>
+(function () {
+  'use strict';
+  var PERMS = {
+    faceQuality: { label: 'face quality', hint: 'Checks that a face photo is good enough (sharp, well lit, facing the camera).' },
+    faceCompare: { label: 'face compare', hint: 'Compares two face photos to tell if they are the same person.' },
+    ocr: { label: 'ocr thaicard', hint: 'Reads the data from a Thai national ID card.', children: [
+      { key: 'front', label: 'front', hint: 'Front side of the card.' },
+      { key: 'back', label: 'back', hint: 'Back side of the card.' },
+      { key: 'fraud', label: 'fraud', hint: 'Detects fake or tampered cards.' }
+    ] },
+    webLiveness: { label: 'web liveness', hint: 'Checks the person is real (not a photo or video), inside a web page.' },
+    smartCapture: { label: 'smart-capture', hint: 'Mobile camera screen that guides the user to take a good ID card / face photo.' },
+    liveness: { label: 'liveness', hint: 'Checks the person is real (not a photo or video), inside the mobile app.' }
+  };
+  var KINDS = {
+    demo: { title: '1. Demo account', blurb: 'Account name starts with "demo-"', perms: ['faceQuality', 'faceCompare', 'ocr', 'webLiveness'], presets: [{ name: 'Select all', keys: ['faceQuality', 'faceCompare', 'ocr', 'webLiveness'] }], multi: true, addLabel: '+ Add another demo account' },
+    api: { title: '2. API account', blurb: '', perms: ['faceQuality', 'faceCompare', 'ocr'], presets: [{ name: 'Select all', keys: ['faceQuality', 'faceCompare', 'ocr'] }], multi: true, addLabel: '+ Add another API account' },
+    mobile: { title: '3. Mobile account', blurb: '', perms: ['smartCapture', 'liveness'], presets: [{ name: 'Select all', keys: ['smartCapture', 'liveness'] }], multi: false },
+    ekyc: { title: '4. EKYC sdk and web liveness account', blurb: 'Account name starts with "ekycsdk-". eKYC access is added automatically', perms: ['faceCompare', 'ocr', 'webLiveness'], presets: [{ name: 'Full eKYC flow', keys: ['faceCompare', 'ocr', 'webLiveness'] }, { name: 'Liveness only', keys: ['webLiveness'] }], multi: true, addLabel: '+ Add another eKYC account' }
+  };
+  var ORDER = ['demo', 'api', 'mobile', 'ekyc'];
+  var uid = 0;
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $all(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function esc(s) { return String(s).replace(/[&<>\"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[c]; }); }
+  var RE_DEMO = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+  var RE_SECRET = /^[a-z0-9]{1,16}$/;
+  var RE_API = /^[A-Z][A-Z0-9]*[0-9]{3}$/;
+  var RE_APP = /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$/;
+  function permsHtml(kind) {
+    var def = KINDS[kind], h = '<fieldset class="perms"><legend>Permissions</legend><div class="presets">';
+    def.presets.forEach(function (p, i) { h += '<button type="button" data-preset="' + i + '">' + esc(p.name) + '</button>'; });
+    h += '<button type="button" data-preset="clear">Clear</button></div>';
+    def.perms.forEach(function (key) {
+      var p = PERMS[key];
+      h += '<label class="perm"><input type="checkbox" data-perm="' + key + '"> <span class="name">' + esc(p.label) + '</span><small>' + esc(p.hint) + '</small></label>';
+      if (p.children) { h += '<div class="perm-children">'; p.children.forEach(function (c) { h += '<label class="perm"><input type="checkbox" data-perm="' + key + '.' + c.key + '"> <span class="name">' + esc(c.label) + '</span><small>' + esc(c.hint) + '</small></label>'; }); h += '</div>'; }
+    });
+    return h + '</fieldset>';
+  }
+  function cloneHtml(label) {
+    return '<label class="field">Clone RSA key from (API account)</label>' + '<div class="hint">' + label + '</div>' + '<div class="clone-source">' + '<select data-f="cloneSelect">' + '<option value="">Choose an API account...</option>' + '<option value="__custom__">Use another API account...</option>' + '</select>' + '<input type="text" class="manual" data-f="clone" placeholder="Enter API account, e.g. AINU001" aria-label="Other API account" autocomplete="off">' + '</div>';
+  }
+  function cardHtml(kind) {
+    var n = ++uid, h = '<div class="acct-top"><strong data-role="label"></strong><button type="button" class="link" data-role="remove">Remove</button></div>';
+    if (kind === 'demo') h += '<label class="field">Account name</label><div class="prefix-row"><span class="prefix">demo-</span><input type="text" data-f="suffix" placeholder="customer name, lowercase" autocomplete="off"></div>' + '<label class="field">Secret</label><div class="hint">Plain text, lowercase letters and digits, up to 16 characters. Example: account demo-ainu, secret ainu.</div>' + '<input type="text" data-f="secret" placeholder="e.g. ainu" autocomplete="off">';
+    else if (kind === 'api') h += '<label class="field">Account name</label><div class="hint">UPPERCASE customer abbreviation + 3-digit number (001, 002, ...).</div>' + '<input type="text" data-f="id" placeholder="e.g. AINU001" autocomplete="off">' + '<label class="field">Create a new RSA key for liveness signing?</label>' + '<div class="radios"><label><input type="radio" name="rsa' + n + '" data-f="rsa" value="Yes"> Yes</label>' + '<label><input type="radio" name="rsa' + n + '" data-f="rsa" value="No"> No</label></div>';
+    else if (kind === 'mobile') h += '<label class="field">App IDs / Bundle IDs</label><div class="hint">One per line. iOS appId or Android bundleId, e.g. com.company.app</div>' + '<textarea data-f="ids" placeholder="com.company.app1&#10;com.company.app2" spellcheck="false"></textarea>';
+    else if (kind === 'ekyc') h += '<label class="field">Account name</label><div class="prefix-row"><span class="prefix">ekycsdk-</span><input type="text" data-f="suffix" placeholder="customer name, lowercase" autocomplete="off"></div>';
+    h += permsHtml(kind);
+    if (kind === 'mobile') h += cloneHtml('The API account that holds the RSA key. It will be copied to these apps.');
+    if (kind === 'ekyc') h += cloneHtml('The API account that holds the RSA key. It will be copied to this account.');
+    return h;
+  }
+  function addCard(kind) {
+    var wrap = $('#sec-' + kind + ' .cards');
+    var card = document.createElement('div');
+    card.className = 'acct';
+    card.dataset.kind = kind;
+    card.innerHTML = cardHtml(kind);
+    wrap.appendChild(card);
+    refreshCardLabels(kind);
+    return card;
+  }
+  function refreshCardLabels(kind) {
+    var cards = $all('#sec-' + kind + ' .acct');
+    cards.forEach(function (c, i) { $('[data-role=label]', c).textContent = KINDS[kind].multi ? 'Account ' + (i + 1) : ''; $('[data-role=remove]', c).hidden = !(KINDS[kind].multi && cards.length > 1); });
+  }
+  function buildSections() {
+    var root = $('#sections');
+    ORDER.forEach(function (kind) {
+      var d = KINDS[kind], sec = document.createElement('div');
+      sec.className = 'card section';
+      sec.id = 'sec-' + kind;
+      sec.innerHTML = '<label class="sec-head"><input type="checkbox" class="sec-toggle"><h2>' + esc(d.title) + '</h2></label>' + '<div class="hint">' + esc(d.blurb) + '</div>' + '<div class="sec-body"><div class="cards"></div>' + (d.multi ? '<button type="button" data-role="add">' + esc(d.addLabel) + '</button>' : '') + '</div>';
+      root.appendChild(sec);
+    });
+  }
+  function readPerms(card) {
+    var out = [];
+    KINDS[card.dataset.kind].perms.forEach(function (key) {
+      var p = PERMS[key], box = $('[data-perm="' + key + '"]', card);
+      if (!box.checked) return;
+      var item = { label: p.label, children: [] };
+      if (p.children) p.children.forEach(function (c) { if ($('[data-perm="' + key + '.' + c.key + '"]', card).checked) item.children.push(c.label); });
+      out.push(item);
+    });
+    return out;
+  }
+  function val(card, f) { var e = $('[data-f=' + f + ']', card); return e ? e.value.trim() : ''; }
+  function cloneValue(card) { var select = $('[data-f=cloneSelect]', card); if (!select) return ''; return select.value === '__custom__' ? val(card, 'clone') : select.value; }
+  function readCard(card) {
+    var kind = card.dataset.kind, a = { kind: kind, perms: readPerms(card) };
+    if (kind === 'demo') { a.suffix = val(card, 'suffix'); a.secret = val(card, 'secret'); a.id = 'demo-' + a.suffix; }
+    if (kind === 'ekyc') { a.suffix = val(card, 'suffix'); a.id = 'ekycsdk-' + a.suffix; a.clone = cloneValue(card); }
+    if (kind === 'api') { a.id = val(card, 'id'); var r = $('[data-f=rsa]:checked', card); a.rsa = r ? r.value : ''; }
+    if (kind === 'mobile') { a.ids = val(card, 'ids').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean); a.clone = cloneValue(card); }
+    return a;
+  }
+  function syncClonePickers() {
+    var apiIds = collect().sections.api || [];
+    var validApiIds = apiIds.map(function (a) { return a.id; }).filter(function (id) { return RE_API.test(id); });
+    $all('.clone-source').forEach(function (wrap) {
+      var select = $('[data-f=cloneSelect]', wrap);
+      var manual = $('[data-f=clone]', wrap);
+      var customSelected = select.value === '__custom__';
+      var current = customSelected ? manual.value.trim() : select.value;
+      var useCustom = customSelected || (current && validApiIds.indexOf(current) < 0);
+      select.innerHTML = '<option value="">Choose an API account...</option>' + validApiIds.map(function (id) { return '<option value="' + esc(id) + '">' + esc(id) + '</option>'; }).join('') + '<option value="__custom__">Use another API account...</option>';
+      if (useCustom) { select.value = '__custom__'; manual.value = current; } else { select.value = current || ''; }
+      wrap.classList.toggle('custom', select.value === '__custom__');
+    });
+  }
+  function collect() {
+    var env = $('input[name=env]:checked'), mode = $('input[name=mode]:checked');
+    var m = { env: env ? env.value : '', mode: mode ? mode.value : 'create', portal: $('#portal').value.trim(), sections: {} };
+    ORDER.forEach(function (kind) { if ($('#sec-' + kind + ' .sec-toggle').checked) m.sections[kind] = $all('#sec-' + kind + ' .acct').map(readCard); });
+    return m;
+  }
+  function allIds(m) { var ids = []; ORDER.forEach(function (k) { (m.sections[k] || []).forEach(function (a) { if (k === 'mobile') ids = ids.concat(a.ids); else ids.push(a.id); }); }); return ids; }
+  function validate(m) {
+    var errors = [], warns = [];
+    if (!m.env) errors.push('Choose the environment (Production or Testing).');
+    if (!m.portal) errors.push('Enter the PortalPartner.');
+    else if (/[<>]/.test(m.portal)) errors.push('PortalPartner still contains a placeholder (< >). Replace it with the real partner name.');
+    if (!Object.keys(m.sections).length) errors.push('Turn on at least one account type below.');
+    var apiIds = [], apiRsa = {}; (m.sections.api || []).forEach(function (a) { apiIds.push(a.id); apiRsa[a.id] = a.rsa; });
+    function checkClone(label, clone) { if (!clone) { errors.push(label + ': enter which API account to clone the RSA key from.'); return; } if (!RE_API.test(clone)) { errors.push(label + ': "' + clone + '" is not a valid API account (UPPERCASE letters + 3-digit number, e.g. AINU001).'); return; } if (apiIds.indexOf(clone) >= 0) { if (apiRsa[clone] === 'No') warns.push(label + ': ' + clone + ' is set to NOT create an RSA key. Make sure it already has one.'); } else { warns.push(label + ': ' + clone + ' is not in this ticket. It must already exist and have an RSA key.'); } }
+    function needPerms(label, a) { if (!a.perms.length) errors.push(label + ': tick at least one permission.'); }
+    (m.sections.demo || []).forEach(function (a, i, arr) { var label = 'Demo account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.suffix) errors.push(label + ': enter the customer name after "demo-".'); else if (!RE_DEMO.test(a.suffix)) errors.push(label + ': name after "demo-" must be lowercase letters, digits or "-" only.'); if (!a.secret) errors.push(label + ': enter a secret.'); else if (!RE_SECRET.test(a.secret)) errors.push(label + ': secret must be lowercase letters and digits only, up to 16 characters.'); needPerms(label, a); });
+    (m.sections.api || []).forEach(function (a, i, arr) { var label = 'API account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.id) errors.push(label + ': enter the account name.'); else if (!RE_API.test(a.id)) errors.push(label + ': "' + a.id + '" must be UPPERCASE letters/digits and end with a 3-digit number (e.g. AINU001).'); if (!a.rsa) errors.push(label + ': answer whether to create a new RSA key (Yes/No).'); if (!a.perms.length && a.rsa !== 'Yes') errors.push(label + ': tick at least one permission, or choose Yes for the RSA key.'); });
+    (m.sections.mobile || []).forEach(function (a) { var label = 'Mobile account'; if (!a.ids.length) errors.push(label + ': enter at least one appId / bundleId.'); a.ids.forEach(function (id) { if (!RE_APP.test(id)) errors.push(label + ': "' + id + '" does not look like an appId / bundleId (e.g. com.company.app).'); }); needPerms(label, a); checkClone(label, a.clone); });
+    (m.sections.ekyc || []).forEach(function (a, i, arr) { var label = 'EKYC sdk account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.suffix) errors.push(label + ': enter the customer name after "ekycsdk-".'); else if (!RE_DEMO.test(a.suffix)) errors.push(label + ': name after "ekycsdk-" must be lowercase letters, digits or "-" only.'); needPerms(label, a); checkClone(label, a.clone); });
+    var ids = allIds(m), seen = {}, dup = {}; ids.forEach(function (id) { var k = id.toLowerCase(); if (seen[k] && !dup[k]) { dup[k] = 1; errors.push('Account "' + id + '" appears more than once.'); } seen[k] = 1; });
+    if (m.mode === 'add' && ids.length !== 1) errors.push('"Add permissions to an existing account" must contain exactly one account (currently ' + ids.length + ').');
+    return { errors: errors, warns: warns };
+  }
+  function permLines(perms) { var l = ['Permissions:', '']; perms.forEach(function (p) { l.push('- ' + p.label); p.children.forEach(function (c) { l.push('  - ' + c); }); }); return l; }
+  function buildTitle(m) { var env = m.env || '<PROD/UAT>', customer = m.portal || '<customer>'; if (m.mode === 'add') { var ids = allIds(m); return '[' + env + '] Add licenses to existing account ' + (ids[0] || '<accountId>') + ' for ' + customer; } return '[' + env + '] Create accounts for ' + customer; }
+  function buildDesc(m) {
+    var L = [];
+    L.push('### 0. PortalPartner (apply to all accounts in this ticket): ' + (m.portal || '<Partner Name>')); L.push('');
+    (m.sections.demo || []).forEach(function (a, i) { if (i === 0) { L.push('### 1. Demo account'); L.push(''); } L.push('accountId: ' + a.id); L.push('secret: ' + a.secret); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); });
+    (m.sections.api || []).forEach(function (a, i) { if (i === 0) { L.push('### 2. API account'); L.push(''); } L.push('accountId: ' + a.id); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Create new RSA Key for liveness signing: ' + (a.rsa || 'Yes/No')); L.push(''); });
+    (m.sections.mobile || []).forEach(function (a) { L.push('### 3. Mobile account'); L.push(''); L.push('accountId:'); L.push(''); a.ids.forEach(function (id) { L.push('- ' + id); }); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Clone RSA Key from: ' + (a.clone || '<API account>')); L.push(''); });
+    (m.sections.ekyc || []).forEach(function (a, i) { if (i === 0) { L.push('### 4. EKYC sdk and web liveness account'); L.push(''); } L.push('accountId: ' + a.id); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Clone RSA Key from: ' + (a.clone || '<API account>')); L.push(''); });
+    return L.join('\n').replace(/\n+$/, '\n');
+  }
+  function refresh() {
+    var m = collect(), v = validate(m);
+    $('#modeNote').hidden = m.mode !== 'add';
+    ORDER.forEach(function (k) { var sec = $('#sec-' + k), on = $('.sec-toggle', sec).checked; sec.classList.toggle('on', on); var add = $('[data-role=add]', sec); if (add) add.hidden = m.mode === 'add'; });
+    syncClonePickers();
+    $('#outTitle').value = buildTitle(m);
+    $('#outDesc').value = buildDesc(m);
+    var ul = $('#msgs'); ul.innerHTML = ''; v.errors.forEach(function (e) { ul.insertAdjacentHTML('beforeend', '<li class="err">' + esc(e) + '</li>'); }); v.warns.forEach(function (w) { ul.insertAdjacentHTML('beforeend', '<li class="warn">' + esc(w) + '</li>'); }); if (!v.errors.length) ul.insertAdjacentHTML('afterbegin', '<li class="ok">Looks good. You can copy the ticket below.</li>');
+    var blocked = v.errors.length > 0; $('#copyTitle').disabled = blocked; $('#copyDesc').disabled = blocked;
+  }
+  function setPerms(card, keys) { $all('[data-perm]', card).forEach(function (b) { b.checked = false; }); keys.forEach(function (key) { var b = $('[data-perm="' + key + '"]', card); if (b) b.checked = true; $all('[data-perm^="' + key + '."]', card).forEach(function (c) { c.checked = true; }); }); }
+  function copy(text, btn) { function done() { var old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = old; }, 1200); } if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text).then(done, fallback); } else fallback(); function fallback() { var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch (e) { alert('Copy failed. Please select the text and copy manually.'); } document.body.removeChild(t); } }
+  function init() {
+    buildSections();
+    document.addEventListener('input', function (e) { var t = e.target; if (t.matches && t.matches('[data-f=suffix], [data-f=secret]')) { var lc = t.value.toLowerCase().replace(/\s+/g, ''); if (lc !== t.value) t.value = lc; } if (t.matches && t.matches('[data-f=id], [data-f=clone]')) { var uc = t.value.toUpperCase().replace(/\s+/g, ''); if (uc !== t.value) t.value = uc; } refresh(); });
+    document.addEventListener('change', function (e) { var t = e.target; if (t.classList.contains('sec-toggle')) { var kind = t.closest('.section').id.replace('sec-', ''); if (t.checked && !$('#sec-' + kind + ' .acct')) addCard(kind); } if (t.matches && t.matches('[data-f=cloneSelect]')) { var wrap = t.closest('.clone-source'); wrap.classList.toggle('custom', t.value === '__custom__'); if (t.value === '__custom__') $('[data-f=clone]', wrap).focus(); } var key = t.dataset && t.dataset.perm; if (key) { var card = t.closest('.acct'); if (key.indexOf('.') < 0) { $all('[data-perm^="' + key + '."]', card).forEach(function (c) { c.checked = t.checked; }); } else { var parent = key.split('.')[0]; var any = $all('[data-perm^="' + parent + '."]', card).some(function (c) { return c.checked; }); $('[data-perm="' + parent + '"]', card).checked = any; } } refresh(); });
+    document.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; var card = b.closest('.acct'), sec = b.closest('.section'); if (b.dataset.preset !== undefined && card) { var kind = card.dataset.kind; setPerms(card, b.dataset.preset === 'clear' ? [] : KINDS[kind].presets[+b.dataset.preset].keys); refresh(); } else if (b.dataset.role === 'add' && sec) { addCard(sec.id.replace('sec-', '')); refresh(); } else if (b.dataset.role === 'remove' && card) { var k = card.dataset.kind; card.remove(); refreshCardLabels(k); refresh(); } });
+    $('#copyTitle').addEventListener('click', function () { copy($('#outTitle').value, this); });
+    $('#copyDesc').addEventListener('click', function () { copy($('#outDesc').value, this); });
+    $('#resetBtn').addEventListener('click', function () { if (confirm('Clear everything and start over?')) location.reload(); });
+    refresh();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
+
