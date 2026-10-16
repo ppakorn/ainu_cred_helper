@@ -34,6 +34,15 @@
   .clone-source { display: grid; gap: 8px; }
   .clone-source .manual { display: none; }
   .clone-source.custom .manual { display: block; }
+  .conditional { display: none; }
+  .conditional.on { display: block; }
+  .perm-clone { margin: 2px 0 8px 24px; }
+  .webhook-row { display: block; }
+  .webhook-row .conditional.on { display: block; margin: 8px 0 0 24px; }
+  .inline-clone { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .inline-clone .clone-source { display: flex; gap: 8px; flex: 1; min-width: 260px; }
+  .inline-clone .clone-source select, .inline-clone .clone-source input { flex: 1; min-width: 0; width: auto; }
+  .inline-clone .clone-label { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
   .sec-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .sec-head input { width: 18px; height: 18px; }
   .sec-head h2 { margin: 0; }
@@ -121,6 +130,7 @@
       { key: 'fraud', label: 'fraud', hint: 'Detects fake or tampered cards.' }
     ] },
     webLiveness: { label: 'web liveness', hint: 'Checks the person is real (not a photo or video), inside a web page.' },
+    dopa: { label: 'DOPA', hint: 'Uses the eKYC DOPA flow.' },
     smartCapture: { label: 'smart-capture', hint: 'Mobile camera screen that guides the user to take a good ID card / face photo.' },
     liveness: { label: 'liveness', hint: 'Checks the person is real (not a photo or video), inside the mobile app.' }
   };
@@ -128,7 +138,7 @@
     demo: { title: '1. Demo account', blurb: 'Account name starts with "demo-"', perms: ['faceQuality', 'faceCompare', 'ocr', 'webLiveness'], presets: [{ name: 'Select all', keys: ['faceQuality', 'faceCompare', 'ocr', 'webLiveness'] }], multi: true, addLabel: '+ Add another demo account' },
     api: { title: '2. API account', blurb: '', perms: ['faceQuality', 'faceCompare', 'ocr'], presets: [{ name: 'Select all', keys: ['faceQuality', 'faceCompare', 'ocr'] }], multi: true, addLabel: '+ Add another API account' },
     mobile: { title: '3. Mobile account', blurb: '', perms: ['smartCapture', 'liveness'], presets: [{ name: 'Select all', keys: ['smartCapture', 'liveness'] }], multi: false },
-    ekyc: { title: '4. EKYC sdk and web liveness account', blurb: 'Account name starts with "ekycsdk-". eKYC access is added automatically', perms: ['faceCompare', 'ocr', 'webLiveness'], presets: [{ name: 'Full eKYC flow', keys: ['faceCompare', 'ocr', 'webLiveness'] }, { name: 'Liveness only', keys: ['webLiveness'] }], multi: true, addLabel: '+ Add another eKYC account' },
+    ekyc: { title: '4. EKYC sdk and web liveness account', blurb: 'Account name starts with "ekycsdk-". eKYC access is added automatically', perms: ['faceCompare', 'ocr', 'webLiveness', 'dopa'], presets: [{ name: 'Full eKYC flow', keys: ['faceCompare', 'ocr', 'webLiveness', 'dopa'] }, { name: 'Liveness only', keys: ['webLiveness'] }], multi: true, addLabel: '+ Add another eKYC account' },
     whitelist: { title: '5. IP and domain whitelist', blurb: 'Optional network allowlist details for follow-up work. Account-creation agents ignore this section.', multi: false }
   };
   var ORDER = ['demo', 'api', 'mobile', 'ekyc', 'whitelist'];
@@ -141,6 +151,11 @@
   var RE_SECRET = /^[a-z0-9]{1,16}$/;
   var RE_API = /^[A-Z][A-Z0-9]*[0-9]{3}$/;
   var RE_APP = /^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$/;
+  var RSA_FIELDS = {
+    liveness: { field: 'rsaLiveness', label: 'liveness signing' },
+    dopa: { field: 'rsaDopa', label: 'EKYC DOPA' },
+    webhook: { field: 'rsaWebhook', label: 'EKYC Webhook' }
+  };
   function permsHtml(kind) {
     var def = KINDS[kind];
     if (!def.perms || !def.presets) return '';
@@ -151,22 +166,26 @@
       var p = PERMS[key];
       h += '<label class="perm"><input type="checkbox" data-perm="' + key + '"> <span class="name">' + esc(p.label) + '</span><small>' + esc(p.hint) + '</small></label>';
       if (p.children) { h += '<div class="perm-children">'; p.children.forEach(function (c) { h += '<label class="perm"><input type="checkbox" data-perm="' + key + '.' + c.key + '"> <span class="name">' + esc(c.label) + '</span><small>' + esc(c.hint) + '</small></label>'; }); h += '</div>'; }
+      if (kind === 'ekyc' && key === 'webLiveness') h += '<div class="perm-clone conditional js-web-liveness-clone">' + inlineClone('webLivenessClone', 'Clone RSA key from (API account)') + '</div>';
+      if (kind === 'ekyc' && key === 'dopa') h += '<div class="perm-clone conditional js-dopa-clone">' + inlineClone('dopaClone', 'Clone RSA key from (API account)') + '</div>';
     });
     return h + '</fieldset>';
   }
-  function cloneHtml(label) {
-    return '<label class="field">Clone RSA key from (API account)</label>' + '<div class="hint">' + label + '</div>' + '<div class="clone-source">' + '<select data-f="cloneSelect">' + '<option value="">Choose an API account...</option>' + '<option value="__custom__">Use another API account...</option>' + '</select>' + '<input type="text" class="manual" data-f="clone" placeholder="Enter API account, e.g. AINU001" aria-label="Other API account" autocomplete="off">' + '</div>';
+  function inlineClone(field, label) {
+    return '<div class="inline-clone"><span class="clone-label">' + esc(label) + '</span><div class="clone-source"><select data-clone-select="' + esc(field) + '" aria-label="' + esc(label) + '"><option value="">Choose an API account...</option><option value="__custom__">Use another API account...</option></select><input type="text" class="manual" data-f="' + esc(field) + '" data-api-ref="1" placeholder="e.g. AINU001" aria-label="Other API account" autocomplete="off"></div></div>';
+  }
+  function cloneHtml(field, title, hint, klass) {
+    return '<div class="' + (klass || '') + '">' + '<label class="field">' + esc(title) + '</label>' + '<div class="hint">' + esc(hint) + '</div>' + '<div class="clone-source">' + '<select data-clone-select="' + esc(field) + '">' + '<option value="">Choose an API account...</option>' + '<option value="__custom__">Use another API account...</option>' + '</select>' + '<input type="text" class="manual" data-f="' + esc(field) + '" data-api-ref="1" placeholder="Enter API account, e.g. AINU001" aria-label="Other API account" autocomplete="off">' + '</div></div>';
   }
   function cardHtml(kind) {
     var n = ++uid, h = '<div class="acct-top"><strong data-role="label"></strong><button type="button" class="link" data-role="remove">Remove</button></div>';
     if (kind === 'demo') h += '<label class="field">Account name</label><div class="prefix-row"><span class="prefix">demo-</span><input type="text" data-f="suffix" placeholder="customer name, lowercase" autocomplete="off"></div>' + '<label class="field">Secret</label><div class="hint">Plain text, lowercase letters and digits, up to 16 characters. Example: account demo-ainu, secret ainu.</div>' + '<input type="text" data-f="secret" placeholder="e.g. ainu" autocomplete="off">';
-    else if (kind === 'api') h += '<label class="field">Account name</label><div class="hint">UPPERCASE customer abbreviation + 3-digit number (001, 002, ...).</div>' + '<input type="text" data-f="id" placeholder="e.g. AINU001" autocomplete="off">' + '<label class="field">Create a new RSA key for liveness signing?</label>' + '<div class="radios"><label><input type="radio" name="rsa' + n + '" data-f="rsa" value="Yes"> Yes</label>' + '<label><input type="radio" name="rsa' + n + '" data-f="rsa" value="No"> No</label></div>';
+    else if (kind === 'api') h += '<label class="field">Account name</label><div class="hint">UPPERCASE customer abbreviation + 3-digit number (001, 002, ...).</div>' + '<input type="text" data-f="id" data-api-ref="1" placeholder="e.g. AINU001" autocomplete="off">' + '<label class="field">Create new RSA key for liveness signing?</label>' + '<div class="radios"><label><input type="radio" name="rsaLiveness' + n + '" data-f="rsaLiveness" value="Yes"> Yes</label>' + '<label><input type="radio" name="rsaLiveness' + n + '" data-f="rsaLiveness" value="No"> No</label></div>' + '<label class="field">Create new RSA key for EKYC DOPA?</label>' + '<div class="radios"><label><input type="radio" name="rsaDopa' + n + '" data-f="rsaDopa" value="Yes"> Yes</label>' + '<label><input type="radio" name="rsaDopa' + n + '" data-f="rsaDopa" value="No"> No</label></div>' + '<label class="field">Create new RSA key for EKYC Webhook?</label>' + '<div class="radios"><label><input type="radio" name="rsaWebhook' + n + '" data-f="rsaWebhook" value="Yes"> Yes</label>' + '<label><input type="radio" name="rsaWebhook' + n + '" data-f="rsaWebhook" value="No"> No</label></div>';
     else if (kind === 'mobile') h += '<label class="field">App IDs / Bundle IDs</label><div class="hint">One per line. iOS appId or Android bundleId, e.g. com.company.app</div>' + '<textarea data-f="ids" placeholder="com.company.app1&#10;com.company.app2" spellcheck="false"></textarea>';
-    else if (kind === 'ekyc') h += '<label class="field">Account name</label><div class="prefix-row"><span class="prefix">ekycsdk-</span><input type="text" data-f="suffix" placeholder="customer name, lowercase" autocomplete="off"></div>';
+    else if (kind === 'ekyc') h += '<label class="field">Account name</label><div class="prefix-row"><span class="prefix">ekycsdk-</span><input type="text" data-f="suffix" placeholder="customer name, lowercase" autocomplete="off"></div>' + '<label class="field">Use webhook?</label>' + '<div class="webhook-row"><div class="radios"><label><input type="radio" name="webhook' + n + '" data-f="useWebhook" value="Yes"> Yes</label>' + '<label><input type="radio" name="webhook' + n + '" data-f="useWebhook" value="No"> No</label></div>' + '<div class="conditional js-webhook-clone">' + inlineClone('webhookClone', 'Clone RSA key from (API account)') + '</div></div>';
     else if (kind === 'whitelist') h += '<label class="field">IP addresses</label><div class="hint">One IP address or CIDR range per line.</div>' + '<textarea data-f="ips" placeholder="203.0.113.10&#10;198.51.100.0/24" spellcheck="false"></textarea>' + '<label class="field">Domains</label><div class="hint">One domain per line.</div>' + '<textarea data-f="domains" placeholder="example.com&#10;api.example.com" spellcheck="false"></textarea>';
     h += permsHtml(kind);
-    if (kind === 'mobile') h += cloneHtml('The API account that holds the RSA key. It will be copied to these apps.');
-    if (kind === 'ekyc') h += cloneHtml('The API account that holds the RSA key. It will be copied to this account.');
+    if (kind === 'mobile') h += cloneHtml('clone', 'Clone RSA key from (API account)', 'The API account that holds the liveness signing RSA key. It will be copied to these apps.');
     return h;
   }
   function addCard(kind) {
@@ -199,20 +218,24 @@
     KINDS[card.dataset.kind].perms.forEach(function (key) {
       var p = PERMS[key], box = $('[data-perm="' + key + '"]', card);
       if (!box.checked) return;
-      var item = { label: p.label, children: [] };
+      var item = { key: key, label: p.label, children: [] };
       if (p.children) p.children.forEach(function (c) { if ($('[data-perm="' + key + '.' + c.key + '"]', card).checked) item.children.push(c.label); });
       out.push(item);
     });
     return out;
   }
   function val(card, f) { var e = $('[data-f=' + f + ']', card); return e ? e.value.trim() : ''; }
-  function cloneValue(card) { var select = $('[data-f=cloneSelect]', card); if (!select) return ''; return select.value === '__custom__' ? val(card, 'clone') : select.value; }
+  function cloneValue(card, field) { var select = $('[data-clone-select="' + field + '"]', card); if (!select) return ''; return select.value === '__custom__' ? val(card, field) : select.value; }
+  function collectApiIdsFromDom() {
+    if (!$('#sec-api .sec-toggle').checked) return [];
+    return $all('#sec-api .acct [data-f="id"]').map(function (input) { return input.value.trim(); }).filter(function (id) { return RE_API.test(id); });
+  }
   function readCard(card) {
     var kind = card.dataset.kind, a = { kind: kind, perms: readPerms(card) };
     if (kind === 'demo') { a.suffix = val(card, 'suffix'); a.secret = val(card, 'secret'); a.id = 'demo-' + a.suffix; }
-    if (kind === 'ekyc') { a.suffix = val(card, 'suffix'); a.id = 'ekycsdk-' + a.suffix; a.clone = cloneValue(card); }
-    if (kind === 'api') { a.id = val(card, 'id'); var r = $('[data-f=rsa]:checked', card); a.rsa = r ? r.value : ''; }
-    if (kind === 'mobile') { a.ids = val(card, 'ids').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean); a.clone = cloneValue(card); }
+    if (kind === 'ekyc') { a.suffix = val(card, 'suffix'); a.id = 'ekycsdk-' + a.suffix; var w = $('[data-f=useWebhook]:checked', card); a.useWebhook = w ? w.value : ''; a.webhookClone = cloneValue(card, 'webhookClone'); a.webLivenessClone = cloneValue(card, 'webLivenessClone'); a.dopaClone = cloneValue(card, 'dopaClone'); }
+    if (kind === 'api') { a.id = val(card, 'id'); ['rsaLiveness', 'rsaDopa', 'rsaWebhook'].forEach(function (f) { var r = $('[data-f=' + f + ']:checked', card); a[f] = r ? r.value : ''; }); }
+    if (kind === 'mobile') { a.ids = val(card, 'ids').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean); a.clone = cloneValue(card, 'clone'); }
     if (kind === 'whitelist') {
       a.ips = val(card, 'ips').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
       a.domains = val(card, 'domains').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
@@ -220,18 +243,31 @@
     return a;
   }
   function syncClonePickers() {
-    var apiIds = collect().sections.api || [];
-    var validApiIds = apiIds.map(function (a) { return a.id; }).filter(function (id) { return RE_API.test(id); });
+    var validApiIds = collectApiIdsFromDom();
     $all('.clone-source').forEach(function (wrap) {
-      var select = $('[data-f=cloneSelect]', wrap);
-      var manual = $('[data-f=clone]', wrap);
+      var select = $('[data-clone-select]', wrap), field = select ? select.getAttribute('data-clone-select') : '';
+      var manual = field ? $('[data-f="' + field + '"]', wrap) : null;
+      if (!select || !manual) return;
       var customSelected = select.value === '__custom__';
       var current = customSelected ? manual.value.trim() : select.value;
       var useCustom = customSelected || (current && validApiIds.indexOf(current) < 0);
-      select.innerHTML = '<option value="">Choose an API account...</option>' + validApiIds.map(function (id) { return '<option value="' + esc(id) + '">' + esc(id) + '</option>'; }).join('') + '<option value="__custom__">Use another API account...</option>';
+      select.innerHTML = '';
+      select.appendChild(new Option('Choose an API account...', ''));
+      validApiIds.forEach(function (id) { select.appendChild(new Option(id, id)); });
+      select.appendChild(new Option('Use another API account...', '__custom__'));
       if (useCustom) { select.value = '__custom__'; manual.value = current; } else { select.value = current || ''; }
       wrap.classList.toggle('custom', select.value === '__custom__');
     });
+  }
+  function syncConditionalFields(card) {
+    if (card.dataset.kind !== 'ekyc') return;
+    var webhook = $('[data-f=useWebhook]:checked', card);
+    var webhookOn = webhook && webhook.value === 'Yes';
+    var webLivenessOn = $('[data-perm="webLiveness"]', card) && $('[data-perm="webLiveness"]', card).checked;
+    var dopaOn = $('[data-perm="dopa"]', card) && $('[data-perm="dopa"]', card).checked;
+    $('.js-webhook-clone', card).classList.toggle('on', !!webhookOn);
+    $('.js-web-liveness-clone', card).classList.toggle('on', !!webLivenessOn);
+    $('.js-dopa-clone', card).classList.toggle('on', !!dopaOn);
   }
   function collect() {
     var env = $('input[name=env]:checked'), mode = $('input[name=mode]:checked');
@@ -247,13 +283,14 @@
     if (!m.portal) errors.push('Enter the PortalPartner.');
     else if (/[<>]/.test(m.portal)) errors.push('PortalPartner still contains a placeholder (< >). Replace it with the real partner name.');
     if (!hasAccountSections(m)) errors.push('Turn on at least one account type below.');
-    var apiIds = [], apiRsa = {}; (m.sections.api || []).forEach(function (a) { apiIds.push(a.id); apiRsa[a.id] = a.rsa; });
-    function checkClone(label, clone) { if (!clone) { errors.push(label + ': enter which API account to clone the RSA key from.'); return; } if (!RE_API.test(clone)) { errors.push(label + ': "' + clone + '" is not a valid API account (UPPERCASE letters + 3-digit number, e.g. AINU001).'); return; } if (apiIds.indexOf(clone) >= 0) { if (apiRsa[clone] === 'No') warns.push(label + ': ' + clone + ' is set to NOT create an RSA key. Make sure it already has one.'); } else { warns.push(label + ': ' + clone + ' is not in this ticket. It must already exist and have an RSA key.'); } }
+    var apiIds = [], apiRsa = {}; (m.sections.api || []).forEach(function (a) { apiIds.push(a.id); apiRsa[a.id] = a; });
+    function hasPerm(a, key) { return a.perms.some(function (p) { return p.key === key; }); }
+    function checkClone(label, clone, purposeKey) { var purpose = RSA_FIELDS[purposeKey]; if (!clone) { errors.push(label + ': enter which API account to clone the ' + purpose.label + ' RSA key from.'); return; } if (!RE_API.test(clone)) { errors.push(label + ': "' + clone + '" is not a valid API account (UPPERCASE letters + 3-digit number, e.g. AINU001).'); return; } if (apiIds.indexOf(clone) >= 0) { if (apiRsa[clone][purpose.field] === 'No') warns.push(label + ': ' + clone + ' is set to NOT create a new ' + purpose.label + ' RSA key. Make sure it already has one.'); } else { warns.push(label + ': ' + clone + ' is not in this ticket. It must already exist and have a ' + purpose.label + ' RSA key.'); } }
     function needPerms(label, a) { if (!a.perms.length) errors.push(label + ': tick at least one permission.'); }
     (m.sections.demo || []).forEach(function (a, i, arr) { var label = 'Demo account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.suffix) errors.push(label + ': enter the customer name after "demo-".'); else if (!RE_DEMO.test(a.suffix)) errors.push(label + ': name after "demo-" must be lowercase letters, digits or "-" only.'); if (!a.secret) errors.push(label + ': enter a secret.'); else if (!RE_SECRET.test(a.secret)) errors.push(label + ': secret must be lowercase letters and digits only, up to 16 characters.'); needPerms(label, a); });
-    (m.sections.api || []).forEach(function (a, i, arr) { var label = 'API account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.id) errors.push(label + ': enter the account name.'); else if (!RE_API.test(a.id)) errors.push(label + ': "' + a.id + '" must be UPPERCASE letters/digits and end with a 3-digit number (e.g. AINU001).'); if (!a.rsa) errors.push(label + ': answer whether to create a new RSA key (Yes/No).'); if (!a.perms.length && a.rsa !== 'Yes') errors.push(label + ': tick at least one permission, or choose Yes for the RSA key.'); });
-    (m.sections.mobile || []).forEach(function (a) { var label = 'Mobile account'; if (!a.ids.length) errors.push(label + ': enter at least one appId / bundleId.'); a.ids.forEach(function (id) { if (!RE_APP.test(id)) errors.push(label + ': "' + id + '" does not look like an appId / bundleId (e.g. com.company.app).'); }); needPerms(label, a); checkClone(label, a.clone); });
-    (m.sections.ekyc || []).forEach(function (a, i, arr) { var label = 'EKYC sdk account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.suffix) errors.push(label + ': enter the customer name after "ekycsdk-".'); else if (!RE_DEMO.test(a.suffix)) errors.push(label + ': name after "ekycsdk-" must be lowercase letters, digits or "-" only.'); needPerms(label, a); checkClone(label, a.clone); });
+    (m.sections.api || []).forEach(function (a, i, arr) { var label = 'API account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.id) errors.push(label + ': enter the account name.'); else if (!RE_API.test(a.id)) errors.push(label + ': "' + a.id + '" must be UPPERCASE letters/digits and end with a 3-digit number (e.g. AINU001).'); if (!a.rsaLiveness) errors.push(label + ': answer whether to create a new RSA key for liveness signing (Yes/No).'); if (!a.rsaDopa) errors.push(label + ': answer whether to create a new RSA key for EKYC DOPA (Yes/No).'); if (!a.rsaWebhook) errors.push(label + ': answer whether to create a new RSA key for EKYC Webhook (Yes/No).'); if (!a.perms.length && a.rsaLiveness !== 'Yes' && a.rsaDopa !== 'Yes' && a.rsaWebhook !== 'Yes') errors.push(label + ': tick at least one permission, or choose Yes for at least one RSA key.'); });
+    (m.sections.mobile || []).forEach(function (a) { var label = 'Mobile account'; if (!a.ids.length) errors.push(label + ': enter at least one appId / bundleId.'); a.ids.forEach(function (id) { if (!RE_APP.test(id)) errors.push(label + ': "' + id + '" does not look like an appId / bundleId (e.g. com.company.app).'); }); needPerms(label, a); checkClone(label, a.clone, 'liveness'); });
+    (m.sections.ekyc || []).forEach(function (a, i, arr) { var label = 'EKYC sdk account' + (arr.length > 1 ? ' ' + (i + 1) : ''); if (!a.suffix) errors.push(label + ': enter the customer name after "ekycsdk-".'); else if (!RE_DEMO.test(a.suffix)) errors.push(label + ': name after "ekycsdk-" must be lowercase letters, digits or "-" only.'); if (!a.useWebhook) errors.push(label + ': answer whether webhook is used (Yes/No).'); needPerms(label, a); if (a.useWebhook === 'Yes') checkClone(label + ' webhook', a.webhookClone, 'webhook'); if (hasPerm(a, 'webLiveness')) checkClone(label + ' web liveness', a.webLivenessClone, 'liveness'); if (hasPerm(a, 'dopa')) checkClone(label + ' DOPA', a.dopaClone, 'dopa'); });
     (m.sections.whitelist || []).forEach(function (a) {
       if (!a.ips.length && !a.domains.length) errors.push('IP and domain whitelist: enter at least one IP address or one domain.');
     });
@@ -261,15 +298,15 @@
     if (m.mode === 'add' && ids.length !== 1) errors.push('"Add permissions to an existing account" must contain exactly one account (currently ' + ids.length + ').');
     return { errors: errors, warns: warns };
   }
-  function permLines(perms) { var l = ['Permissions:', '']; perms.forEach(function (p) { l.push('- ' + p.label); p.children.forEach(function (c) { l.push('  - ' + c); }); }); return l; }
+  function permLines(perms, extraByKey) { var l = ['Permissions:', '']; perms.forEach(function (p) { l.push('- ' + p.label); p.children.forEach(function (c) { l.push('  - ' + c); }); var extra = extraByKey && extraByKey[p.key]; if (extra) (Array.isArray(extra) ? extra : [extra]).forEach(function (line) { l.push('  ' + line); }); }); return l; }
   function buildTitle(m) { var env = m.env || '<PROD/UAT>', customer = m.portal || '<customer>'; if (m.mode === 'add') { var ids = allIds(m); return '[' + env + '] Add licenses to existing account ' + (ids[0] || '<accountId>') + ' for ' + customer; } return '[' + env + '] Create accounts for ' + customer; }
   function buildDesc(m) {
     var L = [];
     L.push('### 0. PortalPartner (apply to all accounts in this ticket): ' + (m.portal || '<Partner Name>')); L.push('');
     (m.sections.demo || []).forEach(function (a, i) { if (i === 0) { L.push('### 1. Demo account'); L.push(''); } L.push('accountId: ' + a.id); L.push('secret: ' + a.secret); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); });
-    (m.sections.api || []).forEach(function (a, i) { if (i === 0) { L.push('### 2. API account'); L.push(''); } L.push('accountId: ' + a.id); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Create new RSA Key for liveness signing: ' + (a.rsa || 'Yes/No')); L.push(''); });
+    (m.sections.api || []).forEach(function (a, i) { if (i === 0) { L.push('### 2. API account'); L.push(''); } L.push('accountId: ' + a.id); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Create new RSA Key for liveness signing: ' + (a.rsaLiveness || 'Yes/No')); L.push('Create new RSA Key for EKYC DOPA: ' + (a.rsaDopa || 'Yes/No')); L.push('Create new RSA Key for EKYC Webhook: ' + (a.rsaWebhook || 'Yes/No')); L.push(''); });
     (m.sections.mobile || []).forEach(function (a) { L.push('### 3. Mobile account'); L.push(''); L.push('accountId:'); L.push(''); a.ids.forEach(function (id) { L.push('- ' + id); }); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Clone RSA Key from: ' + (a.clone || '<API account>')); L.push(''); });
-    (m.sections.ekyc || []).forEach(function (a, i) { if (i === 0) { L.push('### 4. EKYC sdk and web liveness account'); L.push(''); } L.push('accountId: ' + a.id); L.push(''); L = L.concat(permLines(a.perms)); L.push(''); L.push('Clone RSA Key from: ' + (a.clone || '<API account>')); L.push(''); });
+    (m.sections.ekyc || []).forEach(function (a, i) { if (i === 0) { L.push('### 4. EKYC sdk and web liveness account'); L.push(''); } L.push('accountId: ' + a.id); L.push(''); L.push('Use webhook: ' + (a.useWebhook || 'Yes/No')); if (a.useWebhook === 'Yes' || a.webhookClone) L.push('If use webhook, clone RSA Key from: ' + (a.webhookClone || '<API account>')); L.push(''); L = L.concat(permLines(a.perms, { webLiveness: 'Clone RSA Key from: ' + (a.webLivenessClone || '<API account>'), dopa: 'Clone RSA Key from: ' + (a.dopaClone || '<API account>') })); L.push(''); });
     (m.sections.whitelist || []).forEach(function (a, i) {
       if (i === 0) { L.push('### 5. IP and domain whitelist'); L.push(''); }
       L.push('IP whitelist:'); L.push('');
@@ -282,10 +319,13 @@
     return L.join('\n').replace(/\n+$/, '\n');
   }
   function refresh() {
-    var m = collect(), v = validate(m);
-    $('#modeNote').hidden = m.mode !== 'add';
-    ORDER.forEach(function (k) { var sec = $('#sec-' + k), on = $('.sec-toggle', sec).checked; sec.classList.toggle('on', on); var add = $('[data-role=add]', sec); if (add) add.hidden = m.mode === 'add'; });
+    var mode = $('input[name=mode]:checked');
+    var isAddMode = !!mode && mode.value === 'add';
+    $('#modeNote').hidden = !isAddMode;
+    ORDER.forEach(function (k) { var sec = $('#sec-' + k), on = $('.sec-toggle', sec).checked; sec.classList.toggle('on', on); var add = $('[data-role=add]', sec); if (add) add.hidden = isAddMode; });
     syncClonePickers();
+    $all('.acct').forEach(syncConditionalFields);
+    var m = collect(), v = validate(m);
     $('#outTitle').value = buildTitle(m);
     $('#outDesc').value = buildDesc(m);
     var ul = $('#msgs'); ul.innerHTML = ''; v.errors.forEach(function (e) { ul.insertAdjacentHTML('beforeend', '<li class="err">' + esc(e) + '</li>'); }); v.warns.forEach(function (w) { ul.insertAdjacentHTML('beforeend', '<li class="warn">' + esc(w) + '</li>'); }); if (!v.errors.length) ul.insertAdjacentHTML('afterbegin', '<li class="ok">Looks good. You can copy the ticket below.</li>');
@@ -295,8 +335,9 @@
   function copy(text, btn) { function done() { var old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = old; }, 1200); } if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text).then(done, fallback); } else fallback(); function fallback() { var t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch (e) { alert('Copy failed. Please select the text and copy manually.'); } document.body.removeChild(t); } }
   function init() {
     buildSections();
-    document.addEventListener('input', function (e) { var t = e.target; if (t.matches && t.matches('[data-f=suffix], [data-f=secret]')) { var lc = t.value.toLowerCase().replace(/\s+/g, ''); if (lc !== t.value) t.value = lc; } if (t.matches && t.matches('[data-f=id], [data-f=clone]')) { var uc = t.value.toUpperCase().replace(/\s+/g, ''); if (uc !== t.value) t.value = uc; } refresh(); });
-    document.addEventListener('change', function (e) { var t = e.target; if (t.classList.contains('sec-toggle')) { var kind = t.closest('.section').id.replace('sec-', ''); if (t.checked && !$('#sec-' + kind + ' .acct')) addCard(kind); } if (t.matches && t.matches('[data-f=cloneSelect]')) { var wrap = t.closest('.clone-source'); wrap.classList.toggle('custom', t.value === '__custom__'); if (t.value === '__custom__') $('[data-f=clone]', wrap).focus(); } var key = t.dataset && t.dataset.perm; if (key) { var card = t.closest('.acct'); if (key.indexOf('.') < 0) { $all('[data-perm^="' + key + '."]', card).forEach(function (c) { c.checked = t.checked; }); } else { var parent = key.split('.')[0]; var any = $all('[data-perm^="' + parent + '."]', card).some(function (c) { return c.checked; }); $('[data-perm="' + parent + '"]', card).checked = any; } } refresh(); });
+    document.addEventListener('input', function (e) { var t = e.target; if (t.matches && t.matches('[data-f=suffix], [data-f=secret]')) { var lc = t.value.toLowerCase().replace(/\s+/g, ''); if (lc !== t.value) t.value = lc; } if (t.matches && t.matches('[data-api-ref]')) { var uc = t.value.toUpperCase().replace(/\s+/g, ''); if (uc !== t.value) t.value = uc; } refresh(); });
+    document.addEventListener('change', function (e) { var t = e.target; if (t.classList.contains('sec-toggle')) { var kind = t.closest('.section').id.replace('sec-', ''); if (t.checked && !$('#sec-' + kind + ' .acct')) addCard(kind); } if (t.matches && t.matches('[data-clone-select]')) { var wrap = t.closest('.clone-source'), field = t.getAttribute('data-clone-select'); wrap.classList.toggle('custom', t.value === '__custom__'); if (t.value === '__custom__') $('[data-f="' + field + '"]', wrap).focus(); } var key = t.dataset && t.dataset.perm; if (key) { var card = t.closest('.acct'); if (key.indexOf('.') < 0) { $all('[data-perm^="' + key + '."]', card).forEach(function (c) { c.checked = t.checked; }); } else { var parent = key.split('.')[0]; var any = $all('[data-perm^="' + parent + '."]', card).some(function (c) { return c.checked; }); $('[data-perm="' + parent + '"]', card).checked = any; } } refresh(); });
+    document.addEventListener('focusin', function (e) { if (e.target.matches && e.target.matches('[data-clone-select]')) syncClonePickers(); });
     document.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; var card = b.closest('.acct'), sec = b.closest('.section'); if (b.dataset.preset !== undefined && card) { var kind = card.dataset.kind; setPerms(card, b.dataset.preset === 'clear' ? [] : KINDS[kind].presets[+b.dataset.preset].keys); refresh(); } else if (b.dataset.role === 'add' && sec) { addCard(sec.id.replace('sec-', '')); refresh(); } else if (b.dataset.role === 'remove' && card) { var k = card.dataset.kind; card.remove(); refreshCardLabels(k); refresh(); } });
     $('#copyTitle').addEventListener('click', function () { copy($('#outTitle').value, this); });
     $('#copyDesc').addEventListener('click', function () { copy($('#outDesc').value, this); });
